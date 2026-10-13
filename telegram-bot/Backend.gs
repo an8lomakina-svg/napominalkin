@@ -18,7 +18,7 @@ function taskSheet(){
 }
 function who(code){
   const n=P.getProperty('NASTYA_CODE'),s=P.getProperty('SASHA_CODE');
-  if(!n||!s||n===s||n.length<12||s.length<12)throw Error('Use two different long access codes');
+  if(!n||!s||n===s||n.length<4||s.length<4)throw Error('Use two different access codes of at least 4 characters');
   if(code===n)return 'Настя';
   if(code===s)return 'Саша';
   throw Error('Неверный код');
