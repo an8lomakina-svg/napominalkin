@@ -23,38 +23,56 @@ function send(chatId, text) {
 function safe(s) {
   return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 }
-function doPost(e) {
-  try {
-    const body = JSON.parse(e.postData.contents);
-    if (body.update_id !== undefined) { const cache=CacheService.getScriptCache(); const key='tg_'+body.update_id; if(cache.get(key))return ok(); cache.put(key,'1',21600); }
-    const message = body.message;
-    if (!message || !message.chat || !message.text) return ok();
-    const chat = message.chat.id;
-    const input = message.text.trim();
-    const code = input.replace(/^\/start\s*/i, '').trim();
-    if (/^\/start(?:\s|$)/i.test(input)) {
-      if (code && code === P.getProperty('NASTYA_CODE')) {
-        P.setProperty('NASTYA_CHAT_ID', String(chat));
-        send(chat, 'Привет, Настя! Ты подключена к Напоминалкину. ✅');
-      } else if (code && code === P.getProperty('SASHA_CODE')) {
-        P.setProperty('SASHA_CHAT_ID', String(chat));
-        send(chat, 'Привет, Саша! Ты подключён к Напоминалкину. ✅');
-      } else {
-        send(chat, 'Привет! Это Напоминалкин. Для подключения используй персональную ссылку от владельца. Команды: /help, /id');
-      }
-    } else if (input === '/id') {
-      send(chat, 'ID этого чата: <code>' + chat + '</code>');
-    } else if (input === '/help') {
-      send(chat, 'Напоминалкин 🔔\n/start КОД — привязка аккаунта\n/id — ID чата\n/help — помощь\n\nУведомления о задачах станут доступны после подключения общего хранилища сайта.');
-    } else if (input === '/test') {
-      const authorized = [P.getProperty('NASTYA_CHAT_ID'), P.getProperty('SASHA_CHAT_ID')].includes(String(chat));
-      if (authorized) send(chat, '🔔 Проверка связи: уведомления работают!');
-      else send(chat, 'Сначала подключите аккаунт по персональной ссылке.');
-    }
-  } catch (err) {
-    console.error(err);
+function handleUpdate(body) {
+  const message=body.message;
+  if (!message||!message.chat||!message.text) return;
+  const chat=String(message.chat.id),input=message.text.trim();
+  const code=input.replace(/^\/start\s*/i,'').trim();
+  if (/^\/start(?:\s|$)/i.test(input)) {
+    if (code && code===P.getProperty('NASTYA_CODE')) {
+      P.setProperty('NASTYA_CHAT_ID',chat);
+      send(chat,'Привет, Настя! Ты подключена к Напоминалкину. ✅');
+    } else if (code && code===P.getProperty('SASHA_CODE')) {
+      P.setProperty('SASHA_CHAT_ID',chat);
+      send(chat,'Привет, Саша! Ты подключён к Напоминалкину. ✅');
+    } else send(chat,'Привет! Используй свою персональную ссылку для подключения.');
+  } else if(input==='/help') send(chat,'Напоминалкин 🔔\n/start КОД — привязка\n/id — ID чата\n/test — проверить');
+  else if(input==='/id') send(chat,'ID чата: <code>'+chat+'</code>');
+  else if(input==='/test') {
+    const allowed=[P.getProperty('NASTYA_CHAT_ID'),P.getProperty('SASHA_CHAT_ID')].includes(chat);
+    send(chat,allowed?'🔔 Проверка связи: уведомления работают!':'Сначала привяжи аккаунт через /start КОД');
   }
-  return ok();
+}
+// Для Telegram используем polling вместо вебхука: Apps Script может отдавать redirect,
+// из-за которого Telegram повторяет доставку одного update и бот спамит.
+function doPost(e) { return ContentService.createTextOutput('Webhook disabled'); }
+function stopWebhook() {
+  return api('deleteWebhook',{drop_pending_updates:true});
+}
+function startPolling() {
+  stopWebhook();
+  ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='pollTelegram')
+    .forEach(t=>ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('pollTelegram').timeBased().everyMinutes(1).create();
+  pollTelegram();
+}
+function stopPolling() {
+  ScriptApp.getProjectTriggers().filter(t=>t.getHandlerFunction()==='pollTelegram')
+    .forEach(t=>ScriptApp.deleteTrigger(t));
+}
+function pollTelegram() {
+  const lock=LockService.getScriptLock();
+  if(!lock.tryLock(1000)) return;
+  try {
+    const current=Number(P.getProperty('TELEGRAM_OFFSET')||0);
+    const updates=api('getUpdates',{offset:current,limit:50,timeout:0,allowed_updates:['message']});
+    for(const update of updates) {
+      const next=Number(update.update_id)+1;
+      // Сохраняем offset ДО отправки ответа, чтобы не спамить на повторном запуске.
+      P.setProperty('TELEGRAM_OFFSET',String(next));
+      try { handleUpdate(update); } catch(e) {console.error('Update '+update.update_id+': '+e); }
+    }
+  } finally {lock.releaseLock();}
 }
 function ok() { return ContentService.createTextOutput('ok'); }
 function registerWebhook() {
