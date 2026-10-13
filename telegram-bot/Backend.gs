@@ -33,8 +33,10 @@ function reminders(code){
     due:String(r[4]||''),done:r[5]===true,reactions:parseVotes(r[7]),type:String(r[8]||'text'),content:String(r[9]||''),attachments:parseAttachments(r[10])
   })).reverse()};
 }
-function newReminder(code,title,due,type,content,attachments){
-  const from=who(code),to=from==='Настя'?'Саша':'Настя';
+function newReminder(code,title,due,type,content,attachments,recipient){
+  const from=who(code);
+  const fallback=from==='Настя'?'Саша':'Настя';
+  const to=['Настя','Саша'].includes(recipient)?recipient:fallback;
   title=String(title||'').trim().slice(0,160);
   if(!title)throw Error('Напиши название');
   due=String(due||'').slice(0,16);
