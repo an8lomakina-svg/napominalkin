@@ -9,7 +9,7 @@ function taskSheet(){
       if(!id){
         const ss=SpreadsheetApp.create('Напоминалкин - задачи');
         ss.getSheets()[0].setName('Tasks');
-        ss.getSheets()[0].appendRow(['id','from','to','title','due','done','created']);
+        ss.getSheets()[0].appendRow(['id','from','to','title','due','done','created','reactions']);
         id=ss.getId();P.setProperty('TASK_SHEET_ID',id);
       }
     }finally{lock.releaseLock()}
@@ -28,7 +28,7 @@ function reminders(code){
   const rows=taskSheet().getDataRange().getValues().slice(1);
   return {user,tasks:rows.filter(r=>r[0]).map(r=>({
     id:String(r[0]),from:String(r[1]),to:String(r[2]),title:String(r[3]),
-    due:String(r[4]||''),done:r[5]===true
+    due:String(r[4]||''),done:r[5]===true,reactions:parseVotes(r[7])
   })).reverse()};
 }
 function newReminder(code,title,due){
@@ -37,7 +37,7 @@ function newReminder(code,title,due){
   if(!title)throw Error('Напиши название');
   due=String(due||'').slice(0,16);
   if(due&&!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(due))throw Error('Неверная дата');
-  taskSheet().appendRow([Utilities.getUuid(),from,to,title,due,false,new Date().toISOString()]);
+  taskSheet().appendRow([Utilities.getUuid(),from,to,title,due,false,new Date().toISOString(),'{}']);
   const chat=P.getProperty(to==='Настя'?'NASTYA_CHAT_ID':'SASHA_CHAT_ID');
   let sent=false;
   if(chat)try{send(chat,'Новое напоминание от '+safe(from)+': '+safe(title)+(due?'\n'+safe(due):''));sent=true}catch(e){console.error(e)}
@@ -53,4 +53,20 @@ function toggleReminder(code,id){
 }
 function doGet(){
   return HtmlService.createHtmlOutputFromFile('App').setTitle('Напоминалкин');
+}
+
+function parseVotes(s){try{return JSON.parse(String(s||'{}'))}catch(e){return {}}}
+function reactReminder(code,id,emoji){
+ const user=who(code);
+ if(!['👍','❤️','😂','🙏','🔥'].includes(emoji))throw Error('Недопустимая реакция');
+ const lock=LockService.getScriptLock();lock.waitLock(15000);
+ try{
+  const sh=taskSheet(),rows=sh.getDataRange().getValues();
+  const i=rows.findIndex((r,k)=>k>0&&String(r[0])===String(id));
+  if(i<0)throw Error('Не найдено');
+  const votes=parseVotes(rows[i][7]),by=votes[emoji]||{};
+  by[user]=!by[user];votes[emoji]=by;
+  sh.getRange(i+1,8).setValue(JSON.stringify(votes));
+ }finally{lock.releaseLock()}
+ return reminders(code);
 }
