@@ -9,12 +9,14 @@ function taskSheet(){
       if(!id){
         const ss=SpreadsheetApp.create('Напоминалкин - задачи');
         ss.getSheets()[0].setName('Tasks');
-        ss.getSheets()[0].appendRow(['id','from','to','title','due','done','created','reactions']);
+        ss.getSheets()[0].appendRow(['id','from','to','title','due','done','created','reactions','type','content']);
         id=ss.getId();P.setProperty('TASK_SHEET_ID',id);
       }
     }finally{lock.releaseLock()}
   }
-  return SpreadsheetApp.openById(id).getSheetByName('Tasks');
+  const sheet=SpreadsheetApp.openById(id).getSheetByName('Tasks');
+  if(sheet.getLastColumn()<10)sheet.getRange(1,9,1,2).setValues([['type','content']]);
+  return sheet;
 }
 function who(code){
   const n=P.getProperty('NASTYA_CODE'),s=P.getProperty('SASHA_CODE');
@@ -28,19 +30,22 @@ function reminders(code){
   const rows=taskSheet().getDataRange().getValues().slice(1);
   return {user,tasks:rows.filter(r=>r[0]).map(r=>({
     id:String(r[0]),from:String(r[1]),to:String(r[2]),title:String(r[3]),
-    due:String(r[4]||''),done:r[5]===true,reactions:parseVotes(r[7])
+    due:String(r[4]||''),done:r[5]===true,reactions:parseVotes(r[7]),type:String(r[8]||'text'),content:String(r[9]||'')
   })).reverse()};
 }
-function newReminder(code,title,due){
+function newReminder(code,title,due,type,content){
   const from=who(code),to=from==='Настя'?'Саша':'Настя';
   title=String(title||'').trim().slice(0,160);
   if(!title)throw Error('Напиши название');
   due=String(due||'').slice(0,16);
   if(due&&!/^\d{4}-\d\d-\d\dT\d\d:\d\d$/.test(due))throw Error('Неверная дата');
-  taskSheet().appendRow([Utilities.getUuid(),from,to,title,due,false,new Date().toISOString(),'{}']);
+  type=['text','list','drawing'].indexOf(type)>-1?type:'text';
+  content=String(content||'').slice(0,12000);
+  taskSheet().appendRow([Utilities.getUuid(),from,to,title,due,false,new Date().toISOString(),'{}',type,content]);
   const chat=P.getProperty(to==='Настя'?'NASTYA_CHAT_ID':'SASHA_CHAT_ID');
   let sent=false;
-  if(chat)try{send(chat,'Новое напоминание от '+safe(from)+': '+safe(title)+(due?'\n'+safe(due):''));sent=true}catch(e){console.error(e)}
+  const label=type==='list'?'📝 Список: ':type==='drawing'?'🎨 Рисунок: ':'';
+  if(chat)try{send(chat,'Новое напоминание от '+safe(from)+': '+label+safe(title)+(due?'\n'+safe(due):''));sent=true}catch(e){console.error(e)}
   return {sent,...reminders(code)};
 }
 function toggleReminder(code,id){
