@@ -26,6 +26,7 @@ function safe(s) {
 function doPost(e) {
   try {
     const body = JSON.parse(e.postData.contents);
+    if (body.update_id !== undefined) { const cache=CacheService.getScriptCache(); const key='tg_'+body.update_id; if(cache.get(key))return ok(); cache.put(key,'1',21600); }
     const message = body.message;
     if (!message || !message.chat || !message.text) return ok();
     const chat = message.chat.id;
