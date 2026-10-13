@@ -1,0 +1,20 @@
+<!doctype html><html lang="ru"><head><base target="_top"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Напоминалкин</title><style>
+body{font:16px system-ui;background:#f4f7fa;color:#26364e;margin:0}main{max-width:780px;margin:25px auto;padding:18px}h1{font-size:36px}section{background:white;border:1px solid #dce5ee;border-radius:16px;padding:20px;margin:16px 0}input{font:inherit;padding:12px;border:1px solid #ccd7e3;border-radius:9px;box-sizing:border-box;width:100%;margin:8px 0}button,a.action{font:inherit;display:inline-block;border:0;border-radius:8px;padding:10px 13px;background:#334d70;color:white;cursor:pointer;text-decoration:none;margin:4px 4px 4px 0}.secondary{background:#e9eef5;color:#344b6a}.muted{color:#728093}.hidden{display:none}.task{border-top:1px solid #ebeff3;padding:15px 0}.done{text-decoration:line-through}.error{color:#b42f3b}
+</style></head><body><main><h1>Напоминалкин</h1><p class="muted">Общие напоминания Насти и Саши</p>
+<section id="login"><h2>Войти</h2><p>Введи свой личный код, использованный для Telegram-бота.</p><input type="password" id="code" autocomplete="off" placeholder="Личный код"><button onclick="signIn()">Войти</button><p id="log"></p></section>
+<div id="app" class="hidden"><p id="identity"></p><button class="secondary" onclick="signOut()">Выйти</button><button class="secondary" onclick="refresh()">Обновить</button>
+<section><h2>Новое напоминание</h2><input id="title" maxlength="160" placeholder="Что сделать?"><label>Дата и время (необязательно)</label><input id="due" type="datetime-local"><button onclick="add()">Отправить</button><p id="msg"></p></section>
+<section><h2>Список</h2><div id="list"></div></section></div></main>
+<script>
+let code='',user='',tasks=[];
+const el=id=>document.getElementById(id);
+const esc=s=>String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function error(e){el('msg').textContent=e.message||String(e);el('msg').className='error'}
+function signIn(){const v=el('code').value.trim();el('log').textContent='Подключение...';google.script.run.withSuccessHandler(r=>{code=v;user=r.user;tasks=r.tasks;el('code').value='';el('login').classList.add('hidden');el('app').classList.remove('hidden');el('identity').textContent='Вы: '+user;render()}).withFailureHandler(e=>{el('log').textContent=e.message||String(e)}).reminders(v)}
+function signOut(){code='';tasks=[];el('app').classList.add('hidden');el('login').classList.remove('hidden')}
+function refresh(){google.script.run.withSuccessHandler(r=>{tasks=r.tasks;render()}).withFailureHandler(error).reminders(code)}
+function add(){const title=el('title').value.trim();if(!title)return;el('msg').textContent='Сохраняю...';google.script.run.withSuccessHandler(r=>{tasks=r.tasks;el('title').value='';el('due').value='';el('msg').textContent=r.sent?'Сохранено и отправлено в Telegram ✅':'Сохранено. Получатель пока не подключён или Telegram недоступен.';render()}).withFailureHandler(error).newReminder(code,title,el('due').value)}
+function toggle(id){google.script.run.withSuccessHandler(r=>{tasks=r.tasks;render()}).withFailureHandler(error).toggleReminder(code,id)}
+function calendar(t){const start=t.due?new Date(t.due):new Date(),end=new Date(start.getTime()+30*60000),f=d=>d.toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(t.title)+'&dates='+f(start)+'/'+f(end)}
+function render(){el('list').innerHTML=tasks.length?tasks.map(t=>'<article class="task"><b class="'+(t.done?'done':'')+'">'+esc(t.title)+'</b><p class="muted">'+esc(t.from)+' → '+esc(t.to)+(t.due?' · '+esc(t.due.replace('T',' ')):'')+'</p><a class="action secondary" target="_blank" rel="noopener" href="'+esc(calendar(t))+'">📅 Календарь</a>'+(user===t.to?'<button class="secondary" onclick="toggle(\''+esc(t.id)+'\')">'+(t.done?'↩ Вернуть':'✓ Готово')+'</button>':'')+'</article>').join(''):'<p class="muted">Пока нет напоминаний</p>'}
+</script></body></html>
